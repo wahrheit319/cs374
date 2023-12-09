@@ -1,0 +1,12 @@
+#!/bin/bash
+#SBATCH -N 4                         # Number of nodes
+#SBATCH --ntasks-per-node=8          # Number of processes per node
+#SBATCH --mail-type=END,FAIL         # When to send email
+#SBATCH --mail-user=yourEmail@domain.com  # Your email address
+
+# Load the compiler and MPI library
+module load openmpi-2.0/gcc
+
+# Run the program
+mpirun /path/to/your/program
+/home/yl77/374/proj01/

@@ -1,0 +1,385 @@
+Script started on 2023-11-28 00:57:28-05:00 [TERM="xterm-256color" TTY="/dev/pts/1" COLUMNS="144" LINES="24"]
+]0;yl77@gold33: ~/374/proj04[01;32myl77@gold33[00m:[01;34m~/374/proj04[00m$ make
+mpicc     -Wall -ansi -pedantic -std=c99 squareAndSum.c -o squareAndSum
+mpicc     -Wall -ansi -pedantic -std=c99 squareAndSumSeqBinary.c -o squareAndSumSeqBinary
+mpicxx   -Wall -pedantic squareAndSumParBinary.cpp -o squareAndSumParBinary
+]0;yl77@gold33: ~/374/proj04[01;32myl77@gold33[00m:[01;34m~/374/proj04[00m$ make
+make: Nothing to be done for 'all'.
+]0;yl77@gold33: ~/374/proj04[01;32myl77@gold33[00m:[01;34m~/374/proj04[00m$ car   ts  squareAndSum.c
+/* squareAndSum.c computes the sum of the squares
+ *  of the values in an input file,
+ *  whose name is given on the command-line.
+ *
+ * The program is written using typedef to declare
+ *  Item as a generic type, currently double.
+ *
+ * Joel Adams, Fall 2023
+ * for CS 374 (HPC) at Calvin University.
+ *
+ * author Yuese Li
+ * why    Project 4, CS 374
+ * where  Calvin University
+ * date   Fall 2023
+ */
+
+#include <stdio.h>  /* I/O */
+#include <stdlib.h> /* calloc(), exit(), etc. */
+#include <mpi.h>    /* MPI library */
+
+typedef double Item;
+
+void readArray(char *fileName, Item **a, int *n);
+double arraySquareAndSum(Item *a, int numValues);
+
+int main(int argc, char *argv[])
+{
+  int howMany;
+  Item sum;
+  Item *a;
+  double startTime, fileReadTime, computationTime, totalTime;
+
+  MPI_Init(&argc, &argv); // Initialize MPI
+
+  if (argc != 2)
+  {
+    fprintf(stderr, "\n*** Usage: squareAndSum <inputFile>\n\n");
+    MPI_Finalize(); // Finalize MPI before exiting
+    exit(1);
+  }
+
+  startTime = MPI_Wtime(); // Start total time
+
+  // Start timing file read and array allocation
+  double fileReadStartTime = MPI_Wtime();
+  readArray(argv[1], &a, &howMany);
+  fileReadTime = MPI_Wtime() - fileReadStartTime;
+
+  // Start timing computation
+  double computationStartTime = MPI_Wtime();
+  sum = arraySquareAndSum(a, howMany);
+  computationTime = MPI_Wtime() - computationStartTime;
+
+  totalTime = MPI_Wtime() - startTime; // End total time
+
+  printf("The sum of the squares of the values in the file '%s' is %g\n", argv[1], sum);
+  printf("Time taken for file reading and array allocation: %f seconds\n", fileReadTime);
+  printf("Time taken for computation: %f seconds\n", computationTime);
+  printf("Total time taken: %f seconds\n", totalTime);
+
+  free(a);
+  MPI_Finalize(); // Finalize MPI
+
+  return 0;
+}
+
+/* readArray fills an array with Item values from a file.
+ * Receive: fileName, a char*,
+ *          a, the address of a pointer to an Item array,
+ *          n, the address of an int.
+ * PRE: fileName contains N, followed by N double values.
+ * POST: a points to a dynamically allocated array
+ *        containing the N values from fileName
+ *        and n == N.
+ */
+
+void readArray(char *fileName, Item **a, int *n)
+{
+  int count, howMany;
+  Item *tempA;
+  FILE *fin;
+
+  fin = fopen(fileName, "r");
+  if (fin == NULL)
+  {
+    fprintf(stderr, "\n*** Unable to open input file '%s'\n\n",
+            fileName);
+    exit(1);
+  }
+
+  fscanf(fin, "%d", &howMany);
+  tempA = calloc(howMany, sizeof(Item));
+  if (tempA == NULL)
+  {
+    fprintf(stderr, "\n*** Unable to allocate %d-length array",
+            howMany);
+    exit(1);
+  }
+
+  for (count = 0; count < howMany; count++)
+    fscanf(fin, "%lf", &tempA[count]);
+
+  fclose(fin);
+
+  *n = howMany;
+  *a = tempA;
+}
+
+/* arraySquareAndSum sums the squares of the values
+ *  in an array of numeric Items.
+ * Receive: a, a pointer to the head of an array of Items;
+ *          numValues, the number of values in the array.
+ * Return: the sum of the values in the array.
+ */
+
+Item arraySquareAndSum(Item *a, int numValues)
+{
+  Item result = 0.0;
+
+  for (int i = 0; i < numValues; ++i)
+  {
+    result += (a[i] * a[i]);
+  }
+
+  return result;
+}
+]0;yl77@gold33: ~/374/proj04[01;32myl77@gold33[00m:[01;34m~/374/proj04[00m$ ./squareAndSum /home/cs/374/exercises/04/10m-doubles.txt
+The sum of the squares of the values in the file '/home/cs/374/exercises/04/10m-doubles.txt' is 3.33284e+06
+Time taken for file reading and array allocation: 1.327769 seconds
+Time taken for computation: 0.022151 seconds
+Total time taken: 1.349920 seconds
+]0;yl77@gold33: ~/374/proj04[01;32myl77@gold33[00m:[01;34m~/374/proj04[00m$ cat squareAndSumSeqBinary.c
+/* squareAndSumSeqBinary.c computes the sum of the squares
+ * of the values in a binary input file,
+ * whose name is given on the command-line.
+ *
+ * The program is adapted to use binary files for input,
+ * improving the performance over the original text file version.
+ * It uses typedef to declare Item as a generic type, currently double.
+ *
+ * Joel Adams, Fall 2023
+ * for CS 374 (HPC) at Calvin University.
+ *
+ * author Yuese Li
+ * why    Project 4, CS 374
+ * where  Calvin University
+ * date   Fall 2023
+ */
+
+#include <stdio.h>  /* I/O */
+#include <stdlib.h> /* calloc(), exit(), etc. */
+#include <mpi.h>    /* MPI library */
+
+typedef double Item;
+
+void readArray(char *fileName, Item **a, int *n);
+double arraySquareAndSum(Item *a, int numValues);
+
+int main(int argc, char *argv[])
+{
+  int howMany;
+  Item sum;
+  Item *a;
+  double startTime, fileReadTime, computationTime, totalTime;
+
+  MPI_Init(&argc, &argv); // Initialize MPI
+
+  if (argc != 2)
+  {
+    fprintf(stderr, "\n*** Usage: squareAndSum <inputFile>\n\n");
+    MPI_Finalize(); // Finalize MPI before exiting
+    exit(1);
+  }
+
+  startTime = MPI_Wtime(); // Start total time
+
+  // Start timing file read and array allocation
+  double fileReadStartTime = MPI_Wtime();
+  readArray(argv[1], &a, &howMany);
+  fileReadTime = MPI_Wtime() - fileReadStartTime;
+
+  // Start timing computation
+  double computationStartTime = MPI_Wtime();
+  sum = arraySquareAndSum(a, howMany);
+  computationTime = MPI_Wtime() - computationStartTime;
+
+  totalTime = MPI_Wtime() - startTime; // End total time
+
+  printf("The sum of the squares of the values in the file '%s' is %g\n", argv[1], sum);
+  printf("Time taken for file reading and array allocation: %f seconds\n", fileReadTime);
+  printf("Time taken for computation: %f seconds\n", computationTime);
+  printf("Total time taken: %f seconds\n", totalTime);
+
+  free(a);
+  MPI_Finalize(); // Finalize MPI
+
+  return 0;
+}
+
+/* readArray fills an array with Item values from a file.
+ * Receive: fileName, a char*,
+ *          a, the address of a pointer to an Item array,
+ *          n, the address of an int.
+ * PRE: fileName contains N, followed by N double values.
+ * POST: a points to a dynamically allocated array
+ *        containing the N values from fileName
+ *        and n == N.
+ */
+
+void readArray(char *fileName, Item **a, int *n)
+{
+  FILE *fin;
+  long fileSize;
+  int howMany;
+
+  fin = fopen(fileName, "rb"); // Open the file in binary read mode
+  if (fin == NULL)
+  {
+    fprintf(stderr, "\n*** Unable to open input file '%s'\n\n", fileName);
+    exit(1);
+  }
+
+  // Get the file size
+  fseek(fin, 0L, SEEK_END);
+  fileSize = ftell(fin);
+  rewind(fin);
+
+  // Calculate the number of items
+  howMany = fileSize / sizeof(Item);
+
+  // Allocate memory for the array
+  *a = (Item *)calloc(howMany, sizeof(Item));
+  if (*a == NULL)
+  {
+    fprintf(stderr, "\n*** Unable to allocate %d-length array\n", howMany);
+    fclose(fin);
+    exit(1);
+  }
+
+  // Read the values into the array
+  fread(*a, sizeof(Item), howMany, fin);
+  fclose(fin);
+
+  *n = howMany;
+}
+
+/* arraySquareAndSum sums the squares of the values
+ *  in an array of numeric Items.
+ * Receive: a, a pointer to the head of an array of Items;
+ *          numValues, the number of values in the array.
+ * Return: the sum of the values in the array.
+ */
+
+Item arraySquareAndSum(Item *a, int numValues)
+{
+  Item result = 0.0;
+
+  for (int i = 0; i < numValues; ++i)
+  {
+    result += (a[i] * a[i]);
+  }
+
+  return result;
+}
+]0;yl77@gold33: ~/374/proj04[01;32myl77@gold33[00m:[01;34m~/374/proj04[00m$ ./squareAndSumSeqBinary /home/cs/374/exercises/04/10m-doubles.bin
+The sum of the squares of the values in the file '/home/cs/374/exercises/04/10m-doubles.bin' is 3.33284e+06
+Time taken for file reading and array allocation: 0.023477 seconds
+Time taken for computation: 0.022503 seconds
+Total time taken: 0.045980 seconds
+]0;yl77@gold33: ~/374/proj04[01;32myl77@gold33[00m:[01;34m~/374/proj04[00m$ [Kcat squareAndSumParBinary.cpp
+/* squareAndSumParBinary.cpp computes the sum of the squares
+ * of the values in a binary input file in parallel,
+ * with the file name provided on the command-line.
+ *
+ * This version of the program leverages MPI for parallel processing,
+ * significantly improving performance for large datasets.
+ * It uses C++ features such as vectors and OO_MPI_IO for parallel I/O.
+ * Item is typedef-ed as a generic type, currently double.
+ *
+ * Joel Adams, Fall 2023
+ * for CS 374 (HPC) at Calvin University.
+ *
+ * author Yuese Li
+ * why    Project 4, CS 374
+ * where  Calvin University
+ * date   Fall 2023
+ */
+
+#include <stdio.h>     // Standard Input/Output functions
+#include <stdlib.h>    // Standard library functions, including exit
+#include <vector>      // Use of vector container
+#include "OO_MPI_IO.h" // MPI-based Input/Output operations
+#include <mpi.h>       // MPI library
+
+typedef double Item; // Defining 'Item' as an alias for double
+
+// Function to sum the squares of the values in a vector of numeric Items
+double arraySquareAndSum(const std::vector<Item> &data)
+{
+    double result = 0.0;
+    for (Item val : data)
+    {
+        result += val * val; // Squaring each value and adding to the result
+    }
+    return result;
+}
+
+int main(int argc, char *argv[])
+{
+    const int MASTER = 0;                                              // Defining MASTER process for MPI
+    int id, numProcs;                                                  // Process id and number of processes
+    double fileReadTime, computationTime, totalTime;                   // Variables for timing
+
+    // Initialize MPI environment
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &numProcs); // Get the total number of processes
+    MPI_Comm_rank(MPI_COMM_WORLD, &id);       // Get the current process ID
+
+    if (argc != 2)
+    {
+        fprintf(stderr, "\n*** Usage: squareAndSum <inputFile> \n\n");
+        MPI_Finalize();
+        exit(1);
+    }
+
+    // Start total timing after MPI initialization
+    double startTime = MPI_Wtime();
+    
+    // Start timing for file reading
+    double fileReadStartTime = MPI_Wtime();
+
+    // Reading a chunk of data using ParallelReader
+    ParallelReader<Item> reader(argv[1], MPI_DOUBLE, id, numProcs);
+    std::vector<Item> vec; // Vector to store the chunk of data
+    reader.readChunk(vec); // Read the chunk into the vector
+    reader.close();        // Close the reader
+
+    // Stop timing for file reading
+    fileReadTime = MPI_Wtime() - fileReadStartTime;
+
+    // Start timing for computation (including squaring, summing, and reducing)
+    double computationStartTime = MPI_Wtime();
+
+    // Compute sum of squares for the chunk
+    double chunkSum = arraySquareAndSum(vec);
+
+    // Reduce operation to sum up the chunks from all processes
+    double totalSum = 0.0;
+    MPI_Reduce(&chunkSum, &totalSum, 1, MPI_DOUBLE, MPI_SUM, MASTER, MPI_COMM_WORLD);
+
+    // Stop timing for computation
+    computationTime = MPI_Wtime() - computationStartTime;
+
+    // Calculate total elapsed time from the start of MPI
+    totalTime = MPI_Wtime() - startTime;
+
+    // MASTER process prints the result
+    if (id == MASTER)
+    {
+        printf("The sum of the squares of the values in the file '%s' is %g\n", argv[1], totalSum);
+        printf("Time taken for file reading: %f seconds\n", fileReadTime);
+        printf("Time taken for computation: %f seconds\n", computationTime);
+        printf("Total time: %f secs\n", totalTime);
+    }
+
+    // Finalize the MPI environment
+    MPI_Finalize();
+    return 0;
+}
+]0;yl77@gold33: ~/374/proj04[01;32myl77@gold33[00m:[01;34m~/374/proj04[00m$ mpirun -np 6 -machinefile hosts ./squareAndSumParBinary /home/cs/374/exercises/04/10m-doubles.bin
+The sum of the squares of the values in the file '/home/cs/374/exercises/04/10m-doubles.bin' is 3.33284e+06
+Time taken for file reading: 0.026722 seconds
+Time taken for computation: 0.008029 seconds
+Total time: 0.034751 secs
+]0;yl77@gold33: ~/374/proj04[01;32myl77@gold33[00m:[01;34m~/374/proj04[00m$ [Kexit
+
+Script done on 2023-11-28 00:58:09-05:00 [COMMAND_EXIT_CODE="0"]
